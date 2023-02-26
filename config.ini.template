@@ -14,3 +14,4 @@ from = XXX@gmail.com
 to = XXX@gmail.com
 username = XXX@gmail.com
 password = YYY
+subject_prefix = [XXX]

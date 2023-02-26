@@ -38,6 +38,7 @@ def send_notifications(conn, consumer):
 
 def build_send_smtp_notification_handler(config_section) -> Callable[[Message], None]:
     log = logging.getLogger(__name__ + '.send_smtp_notification_handler')
+    subject_prefix = config_section['subject_prefix']
 
     def _get_content_as_html(m: Message) -> str:
         content_with_brs = m.content.replace('\n', '<br/>')
@@ -53,7 +54,7 @@ def build_send_smtp_notification_handler(config_section) -> Callable[[Message], 
             message = MIMEMultipart()
             message["From"] = config_section['from']
             message["To"] = config_section['to']
-            message["Subject"] = f'[Message from Librus] {m.subject}'
+            message["Subject"] = f'{subject_prefix}{m.subject}'
 
             # Add the message body
             message.attach(MIMEText(_get_content_as_html(m), _subtype='html', _charset='utf-8'))
