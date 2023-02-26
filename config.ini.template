@@ -1,0 +1,16 @@
+[general]
+# supported values: noop, smtp
+notification_handler = noop
+
+[librus]
+username = XXX
+password = XXX
+
+[sqlite3]
+messages_db_path = data/messages.db
+
+[notification_handler:smtp]
+from = XXX@gmail.com
+to = XXX@gmail.com
+username = XXX@gmail.com
+password = YYY

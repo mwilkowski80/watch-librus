@@ -1,0 +1,8 @@
+/venv
+/.idea
+/build
+/dist
+__pycache__/
+*.egg-info/
+/data
+/config.ini
