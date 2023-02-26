@@ -3,12 +3,23 @@ import logging
 import smtplib
 import sqlite3
 from configparser import ConfigParser
+from dataclasses import dataclass
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Callable
+from typing import Callable, List
 
 import click
-from librus import LibrusSession, Message
+from librus import LibrusSession
+
+
+@dataclass
+@dataclass
+class Message(object):
+    message_id: str
+    sender: str
+    subject: str
+    sent_at: datetime.datetime
+    content: str
 
 
 def send_notifications(conn, consumer):
@@ -18,7 +29,7 @@ def send_notifications(conn, consumer):
               ' FROM messages WHERE notified_at IS NULL')
     for r in c.fetchall():
         m = Message(message_id=r[0], content=r[1], sender=r[3], subject=r[4],
-                    sent_at=datetime.datetime.fromisoformat(r[5]), is_read=None)
+                    sent_at=datetime.datetime.fromisoformat(r[5]))
         consumer(m)
         c.execute('UPDATE messages SET notified_at = ? WHERE id = ?',
                   (datetime.datetime.now().isoformat(), m.message_id))
@@ -108,6 +119,18 @@ def main(config_file: str, debug: bool):
             conn.close()
 
 
+def capture_messages_from_librus(username: str, password: str) -> List[Message]:
+    session = LibrusSession()
+    session.login(username, password)
+    return [Message(
+        message_id=m.message_id,
+        sender=m.sender,
+        subject=m.subject,
+        sent_at=m.sent_at,
+        content=m.content,
+    ) for m in session.list_messages(get_content=True)]
+
+
 def sync_messages(conn, config_section):
     log = logging.getLogger(__name__ + '.sync_messages')
     # Connect to the SQLite database
@@ -122,10 +145,8 @@ def sync_messages(conn, config_section):
         last_id = last_id[0]
     else:
         last_id = 0
-    # Fetch new messages from the API
-    session = LibrusSession()
-    session.login(config_section['username'], config_section['password'])
-    messages = list(session.list_messages(get_content=True))
+
+    messages = capture_messages_from_librus(config_section['username'], config_section['password'])
     log.info(f'Captured %s messages from Librus', len(messages))
     # Check which messages are not already in the database
     new_message_ids = set(message.message_id for message in messages)

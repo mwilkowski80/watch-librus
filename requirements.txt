@@ -1,2 +1,3 @@
 pysqlite3
 click
+librus==0.0.14
