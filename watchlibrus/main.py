@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import smtplib
 import sqlite3
@@ -6,10 +7,14 @@ from configparser import ConfigParser
 from dataclasses import dataclass
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Callable, List
+from subprocess import check_output, CalledProcessError
+from tempfile import NamedTemporaryFile
+from typing import Callable, List, TextIO
 
 import click
-from librus import LibrusSession
+from librus import LibrusSession, Lesson
+
+config: ConfigParser
 
 
 @dataclass
@@ -100,15 +105,65 @@ def build_notification_handler(config) -> Callable[[Message], None]:
         return nh_builder()
 
 
-@click.command
-@click.argument('CONFIG_FILE', required=True, type=click.Path(exists=True))
-@click.option('--debug', is_flag=True)
-def main(config_file: str, debug: bool):
+@click.group()
+@click.option('--config-file', required=True, type=click.Path(exists=True))
+@click.option('--debug/--no-debug', default=False)
+@click.pass_context
+def watchlibrus_main(ctx: click.Context, debug: bool, config_file: str) -> None:
+    ctx.ensure_object(dict)
+    basic_logging_config(debug)
+    global config
+    config = ConfigParser()
+    config.read([config_file])
+
+
+def basic_logging_config(debug: bool) -> None:
     logging_level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=logging_level, format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
-    config = ConfigParser()
-    config.read(config_file)
+    global log
+    log = logging.getLogger('watchlibrus')
 
+
+@watchlibrus_main.command('capture-schedule')
+@click.option('--output-file', required=True, type=click.File(mode='w'))
+def cmd_capture_schedule(output_file: TextIO) -> None:
+    json.dump(capture_schedule(), output_file, indent=2)
+
+
+@watchlibrus_main.command('compare-schedule')
+@click.option('--input-file', required=True, type=click.Path(file_okay=True, dir_okay=False))
+def cmd_compare_schedule(input_file: str) -> None:
+    with NamedTemporaryFile(mode='w') as f:
+        json.dump(capture_schedule(), f, indent=2)
+        f.flush()
+
+        try:
+            check_output(['diff', input_file, f.name])
+        except CalledProcessError as err:
+            print(err.output.decode('utf-8').strip())
+
+
+def capture_schedule() -> List[dict]:
+    librus_section = config['librus']
+    session = LibrusSession()
+    session.login(librus_section['username'], librus_section['password'])
+    lessons = session.schedule()
+    return [to_dict(l) for l in lessons]
+
+
+def to_dict(lesson: Lesson) -> dict:
+    return {
+        'name': lesson.name,
+        'day': lesson.day,
+        'hour': lesson.index,
+        'time': lesson.time,
+        'classroom': lesson.classroom,
+        'teacher': lesson.teacher
+    }
+
+
+@watchlibrus_main.command('sync-messages')
+def cmd_sync_messages():
     notification_handler = build_notification_handler(config)
     conn = sqlite3.connect(config['sqlite3']['messages_db_path'])
     try:
@@ -165,4 +220,4 @@ def sync_messages(conn, config_section):
 
 
 if __name__ == '__main__':
-    main()
+    watchlibrus_main()
