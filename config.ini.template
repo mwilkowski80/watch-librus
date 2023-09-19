@@ -9,9 +9,14 @@ password = XXX
 [sqlite3]
 messages_db_path = data/messages.db
 
-[notification_handler:smtp]
+[smtp:1]
 from = XXX@gmail.com
 to = XXX@gmail.com
 username = XXX@gmail.com
 password = YYY
+host = smtp.gmail.com
+port = 587
 subject_prefix = [XXX]
+
+[notification_handler:smtp]
+smtp_config_section = smtp:1

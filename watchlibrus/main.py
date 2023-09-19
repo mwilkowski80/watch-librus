@@ -14,6 +14,8 @@ from typing import Callable, List, TextIO
 import click
 from librus import LibrusSession, Lesson
 
+from watchlibrus.SmtpNotificationMailer import SmtpNotificationMailer
+
 config: ConfigParser
 
 
@@ -41,9 +43,11 @@ def send_notifications(conn, consumer):
         log.info('Processed notification for %s', m.message_id)
 
 
-def build_send_smtp_notification_handler(config_section) -> Callable[[Message], None]:
-    log = logging.getLogger(__name__ + '.send_smtp_notification_handler')
-    subject_prefix = config_section['subject_prefix']
+def build_send_smtp_notification_handler(_config: ConfigParser, config_section) -> Callable[[Message], None]:
+    _log = logging.getLogger(__name__ + '.send_smtp_notification_handler')
+
+    smtp_section_name = config_section['smtp_config_section']
+    mailer = SmtpNotificationMailer(_config[smtp_section_name])
 
     def _get_content_as_html(m: Message) -> str:
         content_with_brs = m.content.replace('\n', '<br/>')
@@ -53,29 +57,8 @@ def build_send_smtp_notification_handler(config_section) -> Callable[[Message], 
         <p><strong>Content:</strong></p>{content_with_brs}"""
 
     def _send_smtp_notification(m: Message) -> None:
-        session = None
-        try:
-            # Set up the email parameters
-            message = MIMEMultipart()
-            message["From"] = config_section['from']
-            message["To"] = config_section['to']
-            message["Subject"] = f'{subject_prefix}{m.subject}'
-
-            # Add the message body
-            message.attach(MIMEText(_get_content_as_html(m), _subtype='html', _charset='utf-8'))
-
-            # Create the SMTP session
-            session = smtplib.SMTP("smtp.gmail.com", 587)
-            session.starttls()
-            session.login(config_section['username'], config_section['password'])
-
-            # Send the email
-            text = message.as_string()
-            session.sendmail(config_section['from'], config_section['to'], text)
-            log.debug(f'Notification {m.message_id} processed: SMTP mail sent')
-        finally:
-            if session:
-                session.quit()
+        mailer.send(m.subject, MIMEText(_get_content_as_html(m), _subtype='html', _charset='utf-8'))
+        _log.debug(f'Notification {m.message_id} processed: SMTP mail sent')
 
     return _send_smtp_notification
 
@@ -100,7 +83,7 @@ def build_notification_handler(config) -> Callable[[Message], None]:
     nh_builder = NOTIFICATION_HANDLER_BUILDERS[nh_name]
     nh_section_name = 'notification_handler:' + nh_name
     if nh_section_name in config:
-        return nh_builder(config[nh_section_name])
+        return nh_builder(config, config[nh_section_name])
     else:
         return nh_builder()
 
@@ -133,6 +116,10 @@ def cmd_capture_schedule(output_file: TextIO) -> None:
 @watchlibrus_main.command('compare-schedule')
 @click.option('--input-file', required=True, type=click.Path(file_okay=True, dir_okay=False))
 def cmd_compare_schedule(input_file: str) -> None:
+    def _send_notification(diff: str) -> None:
+        mailer = SmtpNotificationMailer(config['smtp:1'])
+        mailer.send('Zmiana planu lekcji', MIMEText(diff))
+
     with NamedTemporaryFile(mode='w') as f:
         json.dump(capture_schedule(), f, indent=2)
         f.flush()
@@ -140,7 +127,9 @@ def cmd_compare_schedule(input_file: str) -> None:
         try:
             check_output(['diff', input_file, f.name])
         except CalledProcessError as err:
-            print(err.output.decode('utf-8').strip())
+            diff_content = err.output.decode('utf-8').strip()
+            print(diff_content)
+            _send_notification(diff_content)
 
 
 def capture_schedule() -> List[dict]:
@@ -196,11 +185,6 @@ def sync_messages(conn, config_section):
                      (id TEXT PRIMARY KEY, content TEXT, created_at TEXT, sender TEXT, subject TEXT, sent_at TEXT, notified_at TEXT)''')
     # Get the last message ID stored in the database
     c.execute('SELECT id FROM messages ORDER BY id DESC LIMIT 1')
-    last_id = c.fetchone()
-    if last_id:
-        last_id = last_id[0]
-    else:
-        last_id = 0
 
     messages = capture_messages_from_librus(config_section['username'], config_section['password'])
     log.info(f'Captured %s messages from Librus', len(messages))

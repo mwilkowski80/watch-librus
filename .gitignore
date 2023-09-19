@@ -5,4 +5,4 @@
 __pycache__/
 *.egg-info/
 /data
-/config.ini
+/config-*.ini
