@@ -1,0 +1,59 @@
+{
+  "lesson-plan-1": [
+    {
+      "name": "subject-1",
+      "day": 0,
+      "hour": "1",
+      "time": "8:00 - 8:45",
+      "teacher": "teacher-1",
+      "classroom": null
+    },
+    {
+      "name": "subject-2",
+      "day": 0,
+      "hour": "2",
+      "time": "8:00 - 8:45",
+      "teacher": "teacher-1",
+      "classroom": null
+    }
+  ],
+  "lesson-plan-2": [
+    {
+      "name": "subject-1",
+      "day": 0,
+      "hour": "1",
+      "time": "8:00 - 8:45",
+      "teacher": "teacher-1",
+      "classroom": null
+    },
+    {
+      "name": "subject-2",
+      "day": 0,
+      "hour": "2",
+      "time": "8:00 - 8:45",
+      "teacher": "teacher-1",
+      "classroom": null
+    },
+    {
+      "name": "subject-3",
+      "day": 0,
+      "hour": "3",
+      "time": "8:00 - 8:45",
+      "teacher": "teacher-1",
+      "classroom": null
+    }
+  ],
+  "lesson-plan-comparison": [
+    {
+      "lesson-1": null,
+      "lesson-2": {
+        "name": "subject-3",
+        "day": 0,
+        "hour": "3",
+        "time": "8:00 - 8:45",
+        "teacher": "teacher-1",
+        "classroom": null
+      }
+    }
+  ]
+}

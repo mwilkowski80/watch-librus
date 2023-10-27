@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lesson Comparison</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin: 20px auto;
+        }
+
+        th, td {
+            border: 1px solid #dddddd;
+            text-align: left;
+            padding: 8px;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .different {
+            background-color: #ffcccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lesson Comparison</h1>
+    {% for lesson_pair in lesson_pairs %}
+    <table>
+        <tr>
+            <th>Attribute</th>
+            <th>Previous</th>
+            <th>Current</th>
+        </tr>
+        <tr>
+            <td>Day</td>
+            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].day|map_day }}{% endif %}</td>
+            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].day|map_day }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Hour</td>
+            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].hour }}{% endif %}</td>
+            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].hour }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Name</td>
+            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].name }}{% endif %}</td>
+            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].name }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Time</td>
+            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].time }}{% endif %}</td>
+            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].time }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Teacher</td>
+            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[0].teacher != lesson_pair[1].teacher %} class="different"{% endif %}{% endif %}>{% if lesson_pair[0] %}{{ lesson_pair[0].teacher }}{% endif %}</td>
+            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[1].teacher != lesson_pair[0].teacher %} class="different"{% endif %}{% endif %}>{% if lesson_pair[1] %}{{ lesson_pair[1].teacher }}{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Classroom</td>
+            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[0].classroom != lesson_pair[1].classroom %} class="different"{% endif %}{% endif %}>{% if lesson_pair[0] %}{{ lesson_pair[0].classroom }}{% endif %}</td>
+            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[1].classroom != lesson_pair[0].classroom %} class="different"{% endif %}{% endif %}>{% if lesson_pair[1] %}{{ lesson_pair[1].classroom }}{% endif %}</td>
+        </tr>
+    </table>
+    {% endfor %}
+</body>
+</html>

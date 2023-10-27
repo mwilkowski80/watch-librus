@@ -1,20 +1,18 @@
 import datetime
 import json
 import logging
-import smtplib
 import sqlite3
 from configparser import ConfigParser
 from dataclasses import dataclass
-from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from subprocess import check_output, CalledProcessError
-from tempfile import NamedTemporaryFile
 from typing import Callable, List, TextIO
 
 import click
-from librus import LibrusSession, Lesson
+from librus import LibrusSession
 
 from watchlibrus.SmtpNotificationMailer import SmtpNotificationMailer
+from watchlibrus.lessonplan import LessonPlan, Lesson
+from watchlibrus.renderer import Renderer
 
 config: ConfigParser
 
@@ -110,45 +108,31 @@ def basic_logging_config(debug: bool) -> None:
 @watchlibrus_main.command('capture-schedule')
 @click.option('--output-file', required=True, type=click.File(mode='w'))
 def cmd_capture_schedule(output_file: TextIO) -> None:
-    json.dump(capture_schedule(), output_file, indent=2)
+    lesson_plan = capture_lesson_plan()
+    json.dump(lesson_plan.to_list(), output_file, indent=2)
 
 
 @watchlibrus_main.command('compare-schedule')
-@click.option('--input-file', required=True, type=click.Path(file_okay=True, dir_okay=False))
-def cmd_compare_schedule(input_file: str) -> None:
+@click.option('--input-file', required=True, type=click.File())
+def cmd_compare_schedule(input_file: TextIO) -> None:
     def _send_notification(diff: str) -> None:
         mailer = SmtpNotificationMailer(config['smtp:1'])
-        mailer.send('Zmiana planu lekcji', MIMEText(diff))
+        mailer.send('Zmiana planu lekcji', MIMEText(diff, _subtype='html', _charset='utf-8'))
 
-    with NamedTemporaryFile(mode='w') as f:
-        json.dump(capture_schedule(), f, indent=2)
-        f.flush()
+    current_lesson_plan = capture_lesson_plan()
+    previous_lesson_plan = LessonPlan.from_dict_list(json.load(input_file))
 
-        try:
-            check_output(['diff', input_file, f.name])
-        except CalledProcessError as err:
-            diff_content = err.output.decode('utf-8').strip()
-            print(diff_content)
-            _send_notification(diff_content)
+    compare_result = previous_lesson_plan.compare(current_lesson_plan)
+    mail_content = Renderer().render('lesson-plan-change-notification.html', {
+        'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas]})
+    _send_notification(mail_content)
 
 
-def capture_schedule() -> List[dict]:
+def capture_lesson_plan() -> LessonPlan:
     librus_section = config['librus']
     session = LibrusSession()
     session.login(librus_section['username'], librus_section['password'])
-    lessons = session.schedule()
-    return [to_dict(l) for l in lessons]
-
-
-def to_dict(lesson: Lesson) -> dict:
-    return {
-        'name': lesson.name,
-        'day': lesson.day,
-        'hour': lesson.index,
-        'time': lesson.time,
-        'classroom': lesson.classroom,
-        'teacher': lesson.teacher
-    }
+    return LessonPlan(lessons=[Lesson.from_librus_lesson(lesson) for lesson in session.schedule()])
 
 
 @watchlibrus_main.command('sync-messages')
