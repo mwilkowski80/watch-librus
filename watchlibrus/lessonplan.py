@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass
-from typing import List, Optional, Any
+from typing import List, Optional
 
 from librus import Lesson as LibrusLesson
 
@@ -79,6 +79,9 @@ class LessonPlanComparison(object):
         return LessonPlanComparison(
             lesson_deltas=[LessonDelta.from_dict(d) for d in dict_list])
 
+    def is_change(self):
+        return len(self.lesson_deltas) > 0
+
 
 class LessonCompareResult(enum.Enum):
     DIFFERENT = 1,
@@ -89,8 +92,8 @@ class LessonCompareResult(enum.Enum):
 def compare_lessons(l1: Lesson, l2: Lesson) -> LessonCompareResult:
     if (l1.day, l1.hour) == (l2.day, l2.hour):
         return LessonCompareResult.EQUALS \
-            if (l1.time, l1.name, l1.teacher, l1.classroom) == (
-            l2.time, l2.name, l2.teacher, l2.classroom) else LessonCompareResult.DIFFERENT
+            if (l1.time, l1.name, l1.teacher) == (
+            l2.time, l2.name, l2.teacher) else LessonCompareResult.DIFFERENT
     else:
         return LessonCompareResult.OTHER
 

@@ -123,9 +123,10 @@ def cmd_compare_schedule(input_file: TextIO) -> None:
     previous_lesson_plan = LessonPlan.from_dict_list(json.load(input_file))
 
     compare_result = previous_lesson_plan.compare(current_lesson_plan)
-    mail_content = Renderer().render('lesson-plan-change-notification.html', {
-        'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas]})
-    _send_notification(mail_content)
+    if compare_result.is_change():
+        mail_content = Renderer().render('lesson-plan-change-notification.html', {
+            'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas]})
+        _send_notification(mail_content)
 
 
 def capture_lesson_plan() -> LessonPlan:
