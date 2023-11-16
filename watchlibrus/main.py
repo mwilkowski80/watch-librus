@@ -105,6 +105,11 @@ def basic_logging_config(debug: bool) -> None:
     log = logging.getLogger('watchlibrus')
 
 
+def _persist_plan(lesson_plan: LessonPlan, path: str) -> None:
+    with open(path, 'w') as f:
+        json.dump(lesson_plan.to_list(), f)
+
+
 @watchlibrus_main.command('capture-schedule')
 @click.option('--output-file', required=True, type=click.File(mode='w'))
 def cmd_capture_schedule(output_file: TextIO) -> None:
@@ -113,20 +118,22 @@ def cmd_capture_schedule(output_file: TextIO) -> None:
 
 
 @watchlibrus_main.command('compare-schedule')
-@click.option('--input-file', required=True, type=click.File())
-def cmd_compare_schedule(input_file: TextIO) -> None:
+@click.option('--input-file', required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False))
+def cmd_compare_schedule(input_file: str) -> None:
     def _send_notification(diff: str) -> None:
         mailer = SmtpNotificationMailer(config['smtp:1'])
         mailer.send('Zmiana planu lekcji', MIMEText(diff, _subtype='html', _charset='utf-8'))
 
     current_lesson_plan = capture_lesson_plan()
-    previous_lesson_plan = LessonPlan.from_dict_list(json.load(input_file))
+    with open(input_file) as f:
+        previous_lesson_plan = LessonPlan.from_dict_list(json.load(f))
 
     compare_result = previous_lesson_plan.compare(current_lesson_plan)
     if compare_result.is_change():
         mail_content = Renderer().render('lesson-plan-change-notification.html', {
             'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas]})
         _send_notification(mail_content)
+        _persist_plan(current_lesson_plan, input_file)
 
 
 def capture_lesson_plan() -> LessonPlan:
