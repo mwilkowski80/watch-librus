@@ -45,8 +45,8 @@
         </tr>
         <tr>
             <td>Name</td>
-            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].name }}{% endif %}</td>
-            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].name }}{% endif %}</td>
+            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[0].name != lesson_pair[1].name %} class="different"{% endif %}{% endif %}>{% if lesson_pair[0] %}{{ lesson_pair[0].name }}{% endif %}</td>
+            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[1].name != lesson_pair[0].name %} class="different"{% endif %}{% endif %}>{% if lesson_pair[1] %}{{ lesson_pair[1].name }}{% endif %}</td>
         </tr>
         <tr>
             <td>Time</td>
