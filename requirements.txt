@@ -1,4 +1,4 @@
 pysqlite3
 click
-librus==0.0.14
+git+https://github.com/mwilkowski80/librus-api-python
 jinja2
