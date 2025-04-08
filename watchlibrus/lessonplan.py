@@ -38,22 +38,19 @@ class Lesson(object):
     @staticmethod
     def from_dict(input_: dict) -> 'Lesson':
         return Lesson(
-            name=input_['name'], day=input_['day'], hour=input_['hour'],
-            time=input_['time'], classroom=input_['classroom'], teacher=input_['teacher'])
+            name=input_['name'],
+            day=input_['day'],
+            hour=input_['hour'],
+            time=input_['time'],
+            classroom=input_['classroom'],
+            teacher=input_['teacher']
+        )
 
 
 @dataclass
 class LessonDelta(object):
-    l1: Lesson
-    l2: Lesson
-
-    def __eq__(self, other):
-        def _eq_l1_l2(l1: Lesson, l2: Lesson) -> bool:
-            if l1 and l2:
-                return compare_lessons(l1, l2) == LessonCompareResult.EQUALS
-            return not l1 and not l2
-
-        return _eq_l1_l2(self.l1, other.l1) and _eq_l1_l2(self.l2, other.l2)
+    l1: Optional[Lesson]
+    l2: Optional[Lesson]
 
     def __init__(self, l1: Optional[Lesson], l2: Optional[Lesson]) -> None:
         if not l1 and not l2:
@@ -61,12 +58,19 @@ class LessonDelta(object):
         self.l1 = l1
         self.l2 = l2
 
+    def __eq__(self, other):
+        def _eq_l1_l2(a: Lesson, b: Lesson) -> bool:
+            if a and b:
+                return compare_lessons(a, b) == LessonCompareResult.EQUALS
+            return (a is None) and (b is None)
+        return _eq_l1_l2(self.l1, other.l1) and _eq_l1_l2(self.l2, other.l2)
+
     @staticmethod
     def from_dict(dict_: dict) -> 'LessonDelta':
-        d = dict_.get('lesson-1')
-        l1 = Lesson.from_dict(d) if d else None
-        d = dict_.get('lesson-2')
-        l2 = Lesson.from_dict(d) if d else None
+        d1 = dict_.get('lesson-1')
+        l1 = Lesson.from_dict(d1) if d1 else None
+        d2 = dict_.get('lesson-2')
+        l2 = Lesson.from_dict(d2) if d2 else None
         return LessonDelta(l1=l1, l2=l2)
 
 
@@ -77,23 +81,25 @@ class LessonPlanComparison(object):
     @staticmethod
     def from_dict_list(dict_list: List[dict]) -> 'LessonPlanComparison':
         return LessonPlanComparison(
-            lesson_deltas=[LessonDelta.from_dict(d) for d in dict_list])
+            lesson_deltas=[LessonDelta.from_dict(d) for d in dict_list]
+        )
 
     def is_change(self):
         return len(self.lesson_deltas) > 0
 
 
 class LessonCompareResult(enum.Enum):
-    DIFFERENT = 1,
-    EQUALS = 2,
+    DIFFERENT = 1
+    EQUALS = 2
     OTHER = 3
 
 
 def compare_lessons(l1: Lesson, l2: Lesson) -> LessonCompareResult:
     if (l1.day, l1.hour) == (l2.day, l2.hour):
-        return LessonCompareResult.EQUALS \
-            if (l1.time, l1.name, l1.teacher) == (
-            l2.time, l2.name, l2.teacher) else LessonCompareResult.DIFFERENT
+        if (l1.time, l1.name, l1.teacher) == (l2.time, l2.name, l2.teacher):
+            return LessonCompareResult.EQUALS
+        else:
+            return LessonCompareResult.DIFFERENT
     else:
         return LessonCompareResult.OTHER
 
@@ -109,9 +115,8 @@ class LessonPlan(object):
     def from_dict_list(lessons: List[dict]) -> 'LessonPlan':
         return LessonPlan([Lesson.from_dict(d) for d in lessons])
 
-    def compare(self, other: 'LessonPlan') -> LessonPlanComparison:
-        output: List[LessonDelta] = []
-
+    def compare(self, other: 'LessonPlan') -> 'LessonPlanComparison':
+        output = []
         for l1 in self.lessons:
             found_equal = False
             found_different = False

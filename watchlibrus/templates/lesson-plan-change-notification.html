@@ -25,45 +25,36 @@
     </style>
 </head>
 <body>
-    <h1>Lesson Comparison</h1>
-    {% for lesson_pair in lesson_pairs %}
-    <table>
+    <h2>Schedule changed for {{ day_date }}</h2>
+    <table border="1" cellpadding="5" cellspacing="0">
         <tr>
-            <th>Attribute</th>
-            <th>Previous</th>
-            <th>Current</th>
+            <th>Previous Lesson</th>
+            <th>New Lesson</th>
         </tr>
+        {% for l1, l2 in lesson_pairs %}
         <tr>
-            <td>Day</td>
-            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].day|map_day }}{% endif %}</td>
-            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].day|map_day }}{% endif %}</td>
+            <td>
+                {% if l1 %}
+                    {{ l1.time }}<br/>
+                    {{ l1.name }}<br/>
+                    {{ l1.teacher }}<br/>
+                    {{ l1.classroom }}
+                {% else %}
+                    (none)
+                {% endif %}
+            </td>
+            <td>
+                {% if l2 %}
+                    {{ l2.time }}<br/>
+                    {{ l2.name }}<br/>
+                    {{ l2.teacher }}<br/>
+                    {{ l2.classroom }}
+                {% else %}
+                    (none)
+                {% endif %}
+            </td>
         </tr>
-        <tr>
-            <td>Hour</td>
-            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].hour }}{% endif %}</td>
-            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].hour }}{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Name</td>
-            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[0].name != lesson_pair[1].name %} class="different"{% endif %}{% endif %}>{% if lesson_pair[0] %}{{ lesson_pair[0].name }}{% endif %}</td>
-            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[1].name != lesson_pair[0].name %} class="different"{% endif %}{% endif %}>{% if lesson_pair[1] %}{{ lesson_pair[1].name }}{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Time</td>
-            <td>{% if lesson_pair[0] %}{{ lesson_pair[0].time }}{% endif %}</td>
-            <td>{% if lesson_pair[1] %}{{ lesson_pair[1].time }}{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Teacher</td>
-            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[0].teacher != lesson_pair[1].teacher %} class="different"{% endif %}{% endif %}>{% if lesson_pair[0] %}{{ lesson_pair[0].teacher }}{% endif %}</td>
-            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[1].teacher != lesson_pair[0].teacher %} class="different"{% endif %}{% endif %}>{% if lesson_pair[1] %}{{ lesson_pair[1].teacher }}{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Classroom</td>
-            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[0].classroom != lesson_pair[1].classroom %} class="different"{% endif %}{% endif %}>{% if lesson_pair[0] %}{{ lesson_pair[0].classroom }}{% endif %}</td>
-            <td{% if lesson_pair[0] and lesson_pair[1] %}{% if lesson_pair[1].classroom != lesson_pair[0].classroom %} class="different"{% endif %}{% endif %}>{% if lesson_pair[1] %}{{ lesson_pair[1].classroom }}{% endif %}</td>
-        </tr>
+        {% endfor %}
     </table>
-    {% endfor %}
 </body>
 </html>

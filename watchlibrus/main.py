@@ -8,16 +8,15 @@ from email.mime.text import MIMEText
 from typing import Callable, List, TextIO
 
 import click
-from librus import LibrusSession
-
+from watchlibrus.librus import LibrusSession, Lesson as LibrusLesson
 from watchlibrus.SmtpNotificationMailer import SmtpNotificationMailer
 from watchlibrus.lessonplan import LessonPlan, Lesson
 from watchlibrus.renderer import Renderer
 
-config: ConfigParser
+log = logging.getLogger(__name__)
+config: ConfigParser = None
 
 
-@dataclass
 @dataclass
 class Message(object):
     message_id: str
@@ -28,31 +27,36 @@ class Message(object):
 
 
 def send_notifications(conn, consumer):
-    log = logging.getLogger(__name__ + '.send_notifications')
+    _log = logging.getLogger(__name__ + '.send_notifications')
     c = conn.cursor()
-    c.execute('SELECT id, content, created_at, sender, subject, sent_at, notified_at'
-              ' FROM messages WHERE notified_at IS NULL')
+    c.execute('SELECT id, content, created_at, sender, subject, sent_at, notified_at '
+              'FROM messages WHERE notified_at IS NULL')
     for r in c.fetchall():
-        m = Message(message_id=r[0], content=r[1], sender=r[3], subject=r[4],
-                    sent_at=datetime.datetime.fromisoformat(r[5]))
+        m = Message(
+            message_id=r[0],
+            content=r[1],
+            sender=r[3],
+            subject=r[4],
+            sent_at=datetime.datetime.fromisoformat(r[5])
+        )
         consumer(m)
         c.execute('UPDATE messages SET notified_at = ? WHERE id = ?',
                   (datetime.datetime.now().isoformat(), m.message_id))
-        log.info('Processed notification for %s', m.message_id)
+        _log.info('Processed notification for %s', m.message_id)
 
 
 def build_send_smtp_notification_handler(_config: ConfigParser, config_section) -> Callable[[Message], None]:
     _log = logging.getLogger(__name__ + '.send_smtp_notification_handler')
-
     smtp_section_name = config_section['smtp_config_section']
     mailer = SmtpNotificationMailer(_config[smtp_section_name])
 
     def _get_content_as_html(m: Message) -> str:
         content_with_brs = m.content.replace('\n', '<br/>')
-        return f"""
-        <p><strong>From: </strong>{m.sender}</p>
-        <p><strong>Sent at: </strong>{m.sent_at.isoformat()}</p>
-        <p><strong>Content:</strong></p>{content_with_brs}"""
+        return (
+            f"<p><strong>From: </strong>{m.sender}</p>"
+            f"<p><strong>Sent at: </strong>{m.sent_at.isoformat()}</p>"
+            f"<p><strong>Content:</strong></p>{content_with_brs}"
+        )
 
     def _send_smtp_notification(m: Message) -> None:
         mailer.send(m.subject, MIMEText(_get_content_as_html(m), _subtype='html', _charset='utf-8'))
@@ -63,10 +67,8 @@ def build_send_smtp_notification_handler(_config: ConfigParser, config_section) 
 
 def build_noop_notification_handler() -> Callable[[Message], None]:
     log = logging.getLogger(__name__ + '.noop_notification_handler')
-
     def _noop_notification_handler(m: Message) -> None:
         log.debug(f'Notification {m.message_id} processed: noop')
-
     return _noop_notification_handler
 
 
@@ -76,12 +78,12 @@ NOTIFICATION_HANDLER_BUILDERS = {
 }
 
 
-def build_notification_handler(config) -> Callable[[Message], None]:
-    nh_name = config['general']['notification_handler']
+def build_notification_handler(conf) -> Callable[[Message], None]:
+    nh_name = conf['general']['notification_handler']
     nh_builder = NOTIFICATION_HANDLER_BUILDERS[nh_name]
     nh_section_name = 'notification_handler:' + nh_name
-    if nh_section_name in config:
-        return nh_builder(config, config[nh_section_name])
+    if nh_section_name in conf:
+        return nh_builder(conf, conf[nh_section_name])
     else:
         return nh_builder()
 
@@ -99,10 +101,9 @@ def watchlibrus_main(ctx: click.Context, debug: bool, config_file: str) -> None:
 
 
 def basic_logging_config(debug: bool) -> None:
-    logging_level = logging.DEBUG if debug else logging.INFO
-    logging.basicConfig(level=logging_level, format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
-    global log
-    log = logging.getLogger('watchlibrus')
+    level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(level=level,
+                        format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
 
 def _persist_plan(lesson_plan: LessonPlan, path: str) -> None:
@@ -113,34 +114,77 @@ def _persist_plan(lesson_plan: LessonPlan, path: str) -> None:
 @watchlibrus_main.command('capture-schedule')
 @click.option('--output-file', required=True, type=click.File(mode='w'))
 def cmd_capture_schedule(output_file: TextIO) -> None:
-    lesson_plan = capture_lesson_plan()
+    lesson_plan = capture_lesson_plan_default()
     json.dump(lesson_plan.to_list(), output_file, indent=2)
+    log.info("Plan saved to file.")
 
 
 @watchlibrus_main.command('compare-schedule')
-@click.option('--input-file', required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False))
-def cmd_compare_schedule(input_file: str) -> None:
-    def _send_notification(diff: str) -> None:
+@click.option('--input-file', required=True,
+              type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.option('--when', required=True,
+              help="ISO date (YYYY-MM-DD) or +N / -N. +0=today, +1=tomorrow, etc.")
+def cmd_compare_schedule(input_file: str, when: str) -> None:
+    def _send_notification(diff_html: str, day_date: datetime.date) -> None:
+        weekday_str = day_date.strftime('%A')
+        subj = f"Schedule changed – {day_date.isoformat()} ({weekday_str})"
         mailer = SmtpNotificationMailer(config['smtp:1'])
-        mailer.send('Zmiana planu lekcji', MIMEText(diff, _subtype='html', _charset='utf-8'))
+        mailer.send(subj, MIMEText(diff_html, _subtype='html', _charset='utf-8'))
 
-    current_lesson_plan = capture_lesson_plan()
-    with open(input_file) as f:
-        previous_lesson_plan = LessonPlan.from_dict_list(json.load(f))
+    with open(input_file, 'r') as f:
+        old_plan_dict = json.load(f)
+    old_plan = LessonPlan.from_dict_list(old_plan_dict)
 
-    compare_result = previous_lesson_plan.compare(current_lesson_plan)
-    if compare_result.is_change():
-        mail_content = Renderer().render('lesson-plan-change-notification.html', {
-            'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas]})
-        _send_notification(mail_content)
-        _persist_plan(current_lesson_plan, input_file)
+    target_date = parse_when(when)
+    if target_date.weekday() >= 5:
+        raise click.ClickException(f"Weekend not allowed: {target_date.isoformat()}")
 
-
-def capture_lesson_plan() -> LessonPlan:
     librus_section = config['librus']
     session = LibrusSession()
     session.login(librus_section['username'], librus_section['password'])
-    return LessonPlan(lessons=[Lesson.from_librus_lesson(lesson) for lesson in session.schedule()])
+
+    try:
+        new_lessons = session.schedule_for_date(target_date)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+    day_of_week = target_date.weekday()
+    old_plan_day = LessonPlan(lessons=[l for l in old_plan.lessons if l.day == day_of_week])
+    new_plan_day = LessonPlan(lessons=[Lesson.from_librus_lesson(l) for l in new_lessons if l.day == day_of_week])
+
+    compare_result = old_plan_day.compare(new_plan_day)
+    if compare_result.is_change():
+        mail_content = Renderer().render('lesson-plan-change-notification.html', {
+            'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas],
+            'day_date': target_date,
+        })
+        _send_notification(mail_content, target_date)
+        log.info("Changes detected for %s. Notification sent.", target_date.isoformat())
+    else:
+        log.info("No changes for %s.", target_date.isoformat())
+
+
+def capture_lesson_plan_default() -> LessonPlan:
+    librus_section = config['librus']
+    session = LibrusSession()
+    session.login(librus_section['username'], librus_section['password'])
+    lessons = [Lesson.from_librus_lesson(x) for x in session.schedule()]
+    return LessonPlan(lessons=lessons)
+
+
+def parse_when(when_value: str) -> datetime.date:
+    today = datetime.date.today()
+    if when_value.startswith('+') or when_value.startswith('-'):
+        try:
+            offset = int(when_value)
+        except ValueError:
+            raise click.ClickException(f"Invalid offset: {when_value}")
+        return today + datetime.timedelta(days=offset)
+    else:
+        try:
+            return datetime.date.fromisoformat(when_value)
+        except ValueError:
+            raise click.ClickException(f"Invalid date format: {when_value}")
 
 
 @watchlibrus_main.command('sync-messages')
@@ -152,47 +196,60 @@ def cmd_sync_messages():
         send_notifications(conn, notification_handler)
         conn.commit()
     finally:
-        if conn:
-            conn.close()
+        conn.close()
+
+
+def sync_messages(conn, config_section):
+    _log = logging.getLogger(__name__ + '.sync_messages')
+
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS messages
+                 (id TEXT PRIMARY KEY,
+                  content TEXT,
+                  created_at TEXT,
+                  sender TEXT,
+                  subject TEXT,
+                  sent_at TEXT,
+                  notified_at TEXT)''')
+    messages = capture_messages_from_librus(config_section['username'], config_section['password'])
+    _log.info(f'Captured {len(messages)} messages from Librus')
+
+    new_ids = set(m.message_id for m in messages)
+    query = "SELECT id FROM messages WHERE id IN ({})".format(','.join('?' for _ in new_ids))
+    c.execute(query, tuple(new_ids))
+    existing_ids = set(row[0] for row in c.fetchall())
+
+    for message in messages:
+        if message.message_id not in existing_ids:
+            c.execute(
+                "INSERT INTO messages (id, content, created_at, sender, subject, sent_at, notified_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    message.message_id,
+                    message.content,
+                    datetime.datetime.now().isoformat(),
+                    message.sender,
+                    message.subject,
+                    message.sent_at.isoformat(),
+                    None
+                )
+            )
+            _log.info('Added message %s', message.message_id)
 
 
 def capture_messages_from_librus(username: str, password: str) -> List[Message]:
     session = LibrusSession()
     session.login(username, password)
-    return [Message(
-        message_id=m.message_id,
-        sender=m.sender,
-        subject=m.subject,
-        sent_at=m.sent_at,
-        content=m.content,
-    ) for m in session.list_messages(get_content=True)]
-
-
-def sync_messages(conn, config_section):
-    log = logging.getLogger(__name__ + '.sync_messages')
-    # Connect to the SQLite database
-    c = conn.cursor()
-    # Create the messages table if it doesn't exist
-    c.execute('''CREATE TABLE IF NOT EXISTS messages
-                     (id TEXT PRIMARY KEY, content TEXT, created_at TEXT, sender TEXT, subject TEXT, sent_at TEXT, notified_at TEXT)''')
-    # Get the last message ID stored in the database
-    c.execute('SELECT id FROM messages ORDER BY id DESC LIMIT 1')
-
-    messages = capture_messages_from_librus(config_section['username'], config_section['password'])
-    log.info(f'Captured %s messages from Librus', len(messages))
-    # Check which messages are not already in the database
-    new_message_ids = set(message.message_id for message in messages)
-    c.execute("SELECT id FROM messages WHERE id IN ({})".format(
-        ','.join(['?' for _ in new_message_ids])), tuple(new_message_ids))
-    existing_message_ids = set(row[0] for row in c.fetchall())
-    # Store the new messages in the database
-    for message in messages:
-        if message.message_id not in existing_message_ids:
-            c.execute("INSERT INTO messages (id, content, created_at, sender, subject, sent_at, notified_at)"
-                      " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      (message.message_id, message.content, datetime.datetime.now().isoformat(),
-                       message.sender, message.subject, message.sent_at.isoformat(), None))
-            log.info(f'Added message %s', message.message_id)
+    out = []
+    for m in session.list_messages(get_content=True):
+        out.append(Message(
+            message_id=m.message_id,
+            sender=m.sender,
+            subject=m.subject,
+            sent_at=m.sent_at,
+            content=m.content or ""
+        ))
+    return out
 
 
 if __name__ == '__main__':
