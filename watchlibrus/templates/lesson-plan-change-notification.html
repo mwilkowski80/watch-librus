@@ -1,32 +1,78 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Lesson Comparison</title>
+    <title>Schedule Changes</title>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            color: #333;
+        }
+        
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        
         table {
             border-collapse: collapse;
-            width: 80%;
-            margin: 20px auto;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
-
-        th, td {
-            border: 1px solid #dddddd;
-            text-align: left;
-            padding: 8px;
-        }
-
+        
         th {
-            background-color: #f2f2f2;
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+            padding: 12px;
+            text-align: left;
         }
-
-        .different {
-            background-color: #ffcccc;
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            vertical-align: top;
+        }
+        
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .lesson-info {
+            margin: 0;
+            line-height: 1.4;
+        }
+        
+        .lesson-time {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .lesson-name {
+            color: #2980b9;
+            font-size: 1.1em;
+        }
+        
+        .lesson-teacher {
+            color: #7f8c8d;
+        }
+        
+        .lesson-classroom {
+            color: #95a5a6;
+        }
+        
+        .none {
+            color: #95a5a6;
+            font-style: italic;
         }
     </style>
 </head>
 <body>
-    <h2>Schedule changed for {{ day_date }}</h2>
-    <table border="1" cellpadding="5" cellspacing="0">
+    <h2>Schedule changed for {{ day_date.strftime('%A, %B %d, %Y') }}</h2>
+    <table>
         <tr>
             <th>Previous Lesson</th>
             <th>New Lesson</th>
@@ -35,22 +81,26 @@
         <tr>
             <td>
                 {% if l1 %}
-                    {{ l1.time }}<br/>
-                    {{ l1.name }}<br/>
-                    {{ l1.teacher }}<br/>
-                    {{ l1.classroom }}
+                <div class="lesson-info">
+                    <div class="lesson-time">{{ l1.time }}</div>
+                    <div class="lesson-name">{{ l1.name }}</div>
+                    <div class="lesson-teacher">{{ l1.teacher }}</div>
+                    <div class="lesson-classroom">Room: {{ l1.classroom }}</div>
+                </div>
                 {% else %}
-                    (none)
+                <div class="none">(no lesson)</div>
                 {% endif %}
             </td>
             <td>
                 {% if l2 %}
-                    {{ l2.time }}<br/>
-                    {{ l2.name }}<br/>
-                    {{ l2.teacher }}<br/>
-                    {{ l2.classroom }}
+                <div class="lesson-info">
+                    <div class="lesson-time">{{ l2.time }}</div>
+                    <div class="lesson-name">{{ l2.name }}</div>
+                    <div class="lesson-teacher">{{ l2.teacher }}</div>
+                    <div class="lesson-classroom">Room: {{ l2.classroom }}</div>
+                </div>
                 {% else %}
-                    (none)
+                <div class="none">(no lesson)</div>
                 {% endif %}
             </td>
         </tr>

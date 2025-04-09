@@ -5,7 +5,7 @@ import sqlite3
 from configparser import ConfigParser
 from dataclasses import dataclass
 from email.mime.text import MIMEText
-from typing import Callable, List, TextIO
+from typing import Callable, List, TextIO, Optional
 
 import click
 from watchlibrus.librus import LibrusSession, Lesson as LibrusLesson
@@ -93,6 +93,7 @@ def build_notification_handler(conf) -> Callable[[Message], None]:
 @click.option('--debug/--no-debug', default=False)
 @click.pass_context
 def watchlibrus_main(ctx: click.Context, debug: bool, config_file: str) -> None:
+    """Watch Librus for schedule changes and send notifications."""
     ctx.ensure_object(dict)
     basic_logging_config(debug)
     global config
@@ -102,19 +103,32 @@ def watchlibrus_main(ctx: click.Context, debug: bool, config_file: str) -> None:
 
 def basic_logging_config(debug: bool) -> None:
     level = logging.DEBUG if debug else logging.INFO
-    logging.basicConfig(level=level,
-                        format='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
-
-
-def _persist_plan(lesson_plan: LessonPlan, path: str) -> None:
-    with open(path, 'w') as f:
-        json.dump(lesson_plan.to_list(), f)
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s:%(levelname)s:%(name)s:%(message)s'
+    )
 
 
 @watchlibrus_main.command('capture-schedule')
 @click.option('--output-file', required=True, type=click.File(mode='w'))
-def cmd_capture_schedule(output_file: TextIO) -> None:
-    lesson_plan = capture_lesson_plan_default()
+@click.option('--when', required=False,
+              help="ISO date (YYYY-MM-DD) or +N / -N. Defaults to today if not provided.")
+def cmd_capture_schedule(output_file: TextIO, when: Optional[str]) -> None:
+    """Capture the schedule for a specific date or date range."""
+    target_date = parse_when(when) if when else datetime.date.today()
+    if target_date.weekday() >= 5:
+        raise click.ClickException(f"Weekend not allowed: {target_date.isoformat()}")
+
+    librus_section = config['librus']
+    session = LibrusSession()
+    session.login(librus_section['username'], librus_section['password'])
+
+    try:
+        lessons = session.schedule_for_date(target_date)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+    lesson_plan = LessonPlan(lessons=[Lesson.from_librus_lesson(x) for x in lessons])
     json.dump(lesson_plan.to_list(), output_file, indent=2)
     log.info("Plan saved to file.")
 
@@ -125,6 +139,7 @@ def cmd_capture_schedule(output_file: TextIO) -> None:
 @click.option('--when', required=True,
               help="ISO date (YYYY-MM-DD) or +N / -N. +0=today, +1=tomorrow, etc.")
 def cmd_compare_schedule(input_file: str, when: str) -> None:
+    """Compare schedule changes for a specific date."""
     def _send_notification(diff_html: str, day_date: datetime.date) -> None:
         weekday_str = day_date.strftime('%A')
         subj = f"Schedule changed – {day_date.isoformat()} ({weekday_str})"
@@ -149,7 +164,7 @@ def cmd_compare_schedule(input_file: str, when: str) -> None:
         raise click.ClickException(str(e)) from e
 
     day_of_week = target_date.weekday()
-    old_plan_day = LessonPlan(lessons=[l for l in old_plan.lessons if l.day == day_of_week])
+    old_plan_day = old_plan.filter_by_day(day_of_week)
     new_plan_day = LessonPlan(lessons=[Lesson.from_librus_lesson(l) for l in new_lessons if l.day == day_of_week])
 
     compare_result = old_plan_day.compare(new_plan_day)
@@ -164,15 +179,8 @@ def cmd_compare_schedule(input_file: str, when: str) -> None:
         log.info("No changes for %s.", target_date.isoformat())
 
 
-def capture_lesson_plan_default() -> LessonPlan:
-    librus_section = config['librus']
-    session = LibrusSession()
-    session.login(librus_section['username'], librus_section['password'])
-    lessons = [Lesson.from_librus_lesson(x) for x in session.schedule()]
-    return LessonPlan(lessons=lessons)
-
-
 def parse_when(when_value: str) -> datetime.date:
+    """Parse date from string in format YYYY-MM-DD or +N/-N (days from today)."""
     today = datetime.date.today()
     if when_value.startswith('+') or when_value.startswith('-'):
         try:
@@ -189,6 +197,7 @@ def parse_when(when_value: str) -> datetime.date:
 
 @watchlibrus_main.command('sync-messages')
 def cmd_sync_messages():
+    """Synchronize messages from Librus and send notifications."""
     notification_handler = build_notification_handler(config)
     conn = sqlite3.connect(config['sqlite3']['messages_db_path'])
     try:
@@ -200,6 +209,7 @@ def cmd_sync_messages():
 
 
 def sync_messages(conn, config_section):
+    """Synchronize messages from Librus to local database."""
     _log = logging.getLogger(__name__ + '.sync_messages')
 
     c = conn.cursor()
@@ -238,6 +248,7 @@ def sync_messages(conn, config_section):
 
 
 def capture_messages_from_librus(username: str, password: str) -> List[Message]:
+    """Capture messages from Librus."""
     session = LibrusSession()
     session.login(username, password)
     out = []
@@ -253,4 +264,4 @@ def capture_messages_from_librus(username: str, password: str) -> List[Message]:
 
 
 if __name__ == '__main__':
-    watchlibrus_main()
+    watchlibrus_main(obj={})
