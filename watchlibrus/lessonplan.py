@@ -4,7 +4,6 @@ from typing import List, Optional
 
 from watchlibrus.librus import Lesson as LibrusLesson
 
-
 @dataclass
 class Lesson(object):
     day: int
@@ -13,6 +12,7 @@ class Lesson(object):
     time: str
     teacher: Optional[str]
     classroom: Optional[str]
+    is_canceled: bool = False
 
     @staticmethod
     def from_librus_lesson(ll: LibrusLesson) -> 'Lesson':
@@ -22,7 +22,8 @@ class Lesson(object):
             name=ll.name,
             time=ll.time,
             teacher=ll.teacher,
-            classroom=ll.classroom
+            classroom=ll.classroom,
+            is_canceled=getattr(ll, "is_canceled", False)
         )
 
     def to_dict(self) -> dict:
@@ -32,7 +33,8 @@ class Lesson(object):
             'hour': self.hour,
             'time': self.time,
             'classroom': self.classroom,
-            'teacher': self.teacher
+            'teacher': self.teacher,
+            'is_canceled': self.is_canceled
         }
 
     @staticmethod
@@ -43,9 +45,9 @@ class Lesson(object):
             hour=input_['hour'],
             time=input_['time'],
             classroom=input_['classroom'],
-            teacher=input_['teacher']
+            teacher=input_['teacher'],
+            is_canceled=input_.get('is_canceled', False)
         )
-
 
 @dataclass
 class LessonDelta(object):
@@ -73,7 +75,6 @@ class LessonDelta(object):
         l2 = Lesson.from_dict(d2) if d2 else None
         return LessonDelta(l1=l1, l2=l2)
 
-
 @dataclass
 class LessonPlanComparison(object):
     lesson_deltas: List[LessonDelta]
@@ -87,12 +88,10 @@ class LessonPlanComparison(object):
     def is_change(self) -> bool:
         return len(self.lesson_deltas) > 0
 
-
 class LessonCompareResult(enum.Enum):
     DIFFERENT = 1
     EQUALS = 2
     OTHER = 3
-
 
 def compare_lessons(l1: Lesson, l2: Lesson) -> LessonCompareResult:
     """Compare two lessons based on their attributes.
@@ -102,12 +101,19 @@ def compare_lessons(l1: Lesson, l2: Lesson) -> LessonCompareResult:
         DIFFERENT if lessons are at the same time but content differs
         OTHER if lessons are at different times
     """
-    if (l1.day, l1.hour) == (l2.day, l2.hour):
-        if (l1.time, l1.name, l1.teacher, l1.classroom) == (l2.time, l2.name, l2.teacher, l2.classroom):
-            return LessonCompareResult.EQUALS
-        return LessonCompareResult.DIFFERENT
-    return LessonCompareResult.OTHER
+    if (l1.day, l1.hour) != (l2.day, l2.hour):
+        return LessonCompareResult.OTHER
 
+    # Compare all relevant attributes, including is_canceled
+    if (
+        l1.time == l2.time and
+        l1.name == l2.name and
+        l1.teacher == l2.teacher and
+        l1.classroom == l2.classroom and
+        l1.is_canceled == l2.is_canceled
+    ):
+        return LessonCompareResult.EQUALS
+    return LessonCompareResult.DIFFERENT
 
 @dataclass
 class LessonPlan(object):
@@ -125,16 +131,10 @@ class LessonPlan(object):
         return LessonPlan([l for l in self.lessons if l.day == day])
 
     def compare(self, other: 'LessonPlan') -> LessonPlanComparison:
-        """Compare this lesson plan with another one.
-        
-        Returns a LessonPlanComparison object containing:
-        - Lessons that exist in both plans but are different
-        - Lessons that exist only in this plan (l1=lesson, l2=None)
-        - Lessons that exist only in the other plan (l1=None, l2=lesson)
-        """
+        """Compare this lesson plan with another one."""
         output = []
         
-        # Find modified and removed lessons
+        # Find modified or removed
         for l1 in self.lessons:
             found_equal = False
             found_different = False
@@ -148,9 +148,9 @@ class LessonPlan(object):
                     found_equal = True
                     break
             if not found_equal and not found_different:
-                output.append(LessonDelta(l1, None))  # Lesson was removed
+                output.append(LessonDelta(l1, None))
 
-        # Find added lessons
+        # Find added
         for l2 in other.lessons:
             found_equal = False
             found_different = False
@@ -160,6 +160,6 @@ class LessonPlan(object):
                     found_equal = True
                     break
             if not found_equal and not found_different:
-                output.append(LessonDelta(None, l2))  # Lesson was added
+                output.append(LessonDelta(None, l2))
 
         return LessonPlanComparison(lesson_deltas=output)

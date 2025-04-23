@@ -66,6 +66,7 @@ class LibrusSession(object):
             cells = row.find('td')
             if len(cells) < 1:
                 continue
+
             try:
                 index_lekcji = int(cells[0].text.strip())
             except ValueError:
@@ -79,8 +80,15 @@ class LibrusSession(object):
             for day_idx in range(1, len(cells)):
                 cell = cells[day_idx]
                 day_in_week = day_idx - 1
+
+                # Check if "odwołane" is present
+                cell_html = cell.html.lower() if cell.html else ""
+                is_canceled = ("odwołane" in cell_html)
+
                 text_divs = cell.find('div.text')
                 if not text_divs:
+                    # Even if there's no div.text, we might mark it canceled if we want?
+                    # But usually no lesson means skip
                     continue
 
                 subject_names = []
@@ -118,7 +126,11 @@ class LibrusSession(object):
                     teacher=teacher_joined,
                     classroom=classroom_joined
                 )
+                # Set 'is_canceled' if found
+                lesson.is_canceled = is_canceled
+
                 lessons.append(lesson)
+
         return lessons
 
     def list_messages(self, get_content=False):
@@ -160,6 +172,7 @@ class Lesson(object):
         self.time = time
         self.teacher = teacher
         self.classroom = classroom
+        self.is_canceled = False
 
 class Message(object):
     def __init__(self, message_id, sender, subject, sent_at, is_read):
@@ -168,4 +181,4 @@ class Message(object):
         self.subject = subject
         self.sent_at = sent_at
         self.is_read = is_read
-        self.content = None 
+        self.content = None

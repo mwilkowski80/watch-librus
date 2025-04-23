@@ -68,10 +68,18 @@
             color: #95a5a6;
             font-style: italic;
         }
+
+        .canceled-label {
+            color: red;
+            font-weight: bold;
+            margin-left: 6px;
+        }
     </style>
 </head>
 <body>
-    <h2>Schedule changed for {{ day_date.strftime('%A, %B %d, %Y') }}</h2>
+    <!-- The "change_info" context can display something like "Changes detected" or "No changes in the schedule." -->
+    <h2>{{ change_info }} for {{ day_date.strftime('%A, %B %d, %Y') }}</h2>
+    
     <table>
         <tr>
             <th>Previous Lesson</th>
@@ -83,7 +91,12 @@
                 {% if l1 %}
                 <div class="lesson-info">
                     <div class="lesson-time">{{ l1.time }}</div>
-                    <div class="lesson-name">{{ l1.name }}</div>
+                    <div class="lesson-name">
+                        {{ l1.name }}
+                        {% if l1.is_canceled %}
+                        <span class="canceled-label">(canceled)</span>
+                        {% endif %}
+                    </div>
                     <div class="lesson-teacher">{{ l1.teacher }}</div>
                     <div class="lesson-classroom">Room: {{ l1.classroom }}</div>
                 </div>
@@ -95,7 +108,12 @@
                 {% if l2 %}
                 <div class="lesson-info">
                     <div class="lesson-time">{{ l2.time }}</div>
-                    <div class="lesson-name">{{ l2.name }}</div>
+                    <div class="lesson-name">
+                        {{ l2.name }}
+                        {% if l2.is_canceled %}
+                        <span class="canceled-label">(canceled)</span>
+                        {% endif %}
+                    </div>
                     <div class="lesson-teacher">{{ l2.teacher }}</div>
                     <div class="lesson-classroom">Room: {{ l2.classroom }}</div>
                 </div>

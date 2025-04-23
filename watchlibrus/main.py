@@ -16,7 +16,6 @@ from watchlibrus.renderer import Renderer
 log = logging.getLogger(__name__)
 config: ConfigParser = None
 
-
 @dataclass
 class Message(object):
     message_id: str
@@ -24,7 +23,6 @@ class Message(object):
     subject: str
     sent_at: datetime.datetime
     content: str
-
 
 def send_notifications(conn, consumer):
     _log = logging.getLogger(__name__ + '.send_notifications')
@@ -44,7 +42,6 @@ def send_notifications(conn, consumer):
                   (datetime.datetime.now().isoformat(), m.message_id))
         _log.info('Processed notification for %s', m.message_id)
 
-
 def build_send_smtp_notification_handler(_config: ConfigParser, config_section) -> Callable[[Message], None]:
     _log = logging.getLogger(__name__ + '.send_smtp_notification_handler')
     smtp_section_name = config_section['smtp_config_section']
@@ -58,12 +55,11 @@ def build_send_smtp_notification_handler(_config: ConfigParser, config_section) 
             f"<p><strong>Content:</strong></p>{content_with_brs}"
         )
 
-    def _send_smtp_notification(m: Message) -> None:
-        mailer.send(m.subject, MIMEText(_get_content_as_html(m), _subtype='html', _charset='utf-8'))
-        _log.debug(f'Notification {m.message_id} processed: SMTP mail sent')
+    def _send_smtp_notification(msg: Message) -> None:
+        mailer.send(msg.subject, MIMEText(_get_content_as_html(msg), _subtype='html', _charset='utf-8'))
+        _log.debug(f'Notification {msg.message_id} processed: SMTP mail sent')
 
     return _send_smtp_notification
-
 
 def build_noop_notification_handler() -> Callable[[Message], None]:
     log = logging.getLogger(__name__ + '.noop_notification_handler')
@@ -71,12 +67,10 @@ def build_noop_notification_handler() -> Callable[[Message], None]:
         log.debug(f'Notification {m.message_id} processed: noop')
     return _noop_notification_handler
 
-
 NOTIFICATION_HANDLER_BUILDERS = {
     'smtp': build_send_smtp_notification_handler,
     'noop': build_noop_notification_handler,
 }
-
 
 def build_notification_handler(conf) -> Callable[[Message], None]:
     nh_name = conf['general']['notification_handler']
@@ -86,7 +80,6 @@ def build_notification_handler(conf) -> Callable[[Message], None]:
         return nh_builder(conf, conf[nh_section_name])
     else:
         return nh_builder()
-
 
 @click.group()
 @click.option('--config-file', required=True, type=click.Path(exists=True))
@@ -100,14 +93,12 @@ def watchlibrus_main(ctx: click.Context, debug: bool, config_file: str) -> None:
     config = ConfigParser()
     config.read([config_file])
 
-
 def basic_logging_config(debug: bool) -> None:
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(
         level=level,
         format='%(asctime)s:%(levelname)s:%(name)s:%(message)s'
     )
-
 
 @watchlibrus_main.command('capture-schedule')
 @click.option('--output-file', required=True, type=click.File(mode='w'))
@@ -132,7 +123,6 @@ def cmd_capture_schedule(output_file: TextIO, when: Optional[str]) -> None:
     json.dump(lesson_plan.to_list(), output_file, indent=2)
     log.info("Plan saved to file.")
 
-
 @watchlibrus_main.command('compare-schedule')
 @click.option('--input-file', required=True,
               type=click.Path(exists=True, file_okay=True, dir_okay=False))
@@ -140,9 +130,13 @@ def cmd_capture_schedule(output_file: TextIO, when: Optional[str]) -> None:
               help="ISO date (YYYY-MM-DD) or +N / -N. +0=today, +1=tomorrow, etc.")
 def cmd_compare_schedule(input_file: str, when: str) -> None:
     """Compare schedule changes for a specific date."""
-    def _send_notification(diff_html: str, day_date: datetime.date) -> None:
+    def _send_notification(diff_html: str, day_date: datetime.date, changed: bool) -> None:
         weekday_str = day_date.strftime('%A')
-        subj = f"Schedule changed – {day_date.isoformat()} ({weekday_str})"
+        if changed:
+            subj = f"Schedule changed – {day_date.isoformat()} ({weekday_str})"
+        else:
+            subj = f"Schedule no changes – {day_date.isoformat()} ({weekday_str})"
+
         mailer = SmtpNotificationMailer(config['smtp:1'])
         mailer.send(subj, MIMEText(diff_html, _subtype='html', _charset='utf-8'))
 
@@ -168,20 +162,34 @@ def cmd_compare_schedule(input_file: str, when: str) -> None:
     new_plan_day = LessonPlan(lessons=[Lesson.from_librus_lesson(l) for l in new_lessons if l.day == day_of_week])
 
     compare_result = old_plan_day.compare(new_plan_day)
-    if compare_result.is_change():
+    changed = compare_result.is_change()
+
+    # Always send email now
+    if changed:
         mail_content = Renderer().render('lesson-plan-change-notification.html', {
             'lesson_pairs': [(ld.l1, ld.l2) for ld in compare_result.lesson_deltas],
             'day_date': target_date,
+            'change_info': "Changes detected"
         })
-        _send_notification(mail_content, target_date)
+    else:
+        mail_content = Renderer().render('lesson-plan-change-notification.html', {
+            'lesson_pairs': [],
+            'day_date': target_date,
+            'change_info': "No changes in the schedule"
+        })
+
+    _send_notification(mail_content, target_date, changed)
+
+    if changed:
         log.info("Changes detected for %s. Notification sent.", target_date.isoformat())
     else:
-        log.info("No changes for %s.", target_date.isoformat())
+        log.info("No changes for %s. Still sent a notification email.", target_date.isoformat())
 
-
-def parse_when(when_value: str) -> datetime.date:
+def parse_when(when_value: Optional[str]) -> datetime.date:
     """Parse date from string in format YYYY-MM-DD or +N/-N (days from today)."""
     today = datetime.date.today()
+    if not when_value:
+        return today
     if when_value.startswith('+') or when_value.startswith('-'):
         try:
             offset = int(when_value)
@@ -194,7 +202,6 @@ def parse_when(when_value: str) -> datetime.date:
         except ValueError:
             raise click.ClickException(f"Invalid date format: {when_value}")
 
-
 @watchlibrus_main.command('sync-messages')
 def cmd_sync_messages():
     """Synchronize messages from Librus and send notifications."""
@@ -206,7 +213,6 @@ def cmd_sync_messages():
         conn.commit()
     finally:
         conn.close()
-
 
 def sync_messages(conn, config_section):
     """Synchronize messages from Librus to local database."""
@@ -246,7 +252,6 @@ def sync_messages(conn, config_section):
             )
             _log.info('Added message %s', message.message_id)
 
-
 def capture_messages_from_librus(username: str, password: str) -> List[Message]:
     """Capture messages from Librus."""
     session = LibrusSession()
@@ -261,7 +266,6 @@ def capture_messages_from_librus(username: str, password: str) -> List[Message]:
             content=m.content or ""
         ))
     return out
-
 
 if __name__ == '__main__':
     watchlibrus_main(obj={})
