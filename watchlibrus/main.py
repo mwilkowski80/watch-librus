@@ -133,9 +133,9 @@ def cmd_compare_schedule(input_file: str, when: str) -> None:
     def _send_notification(diff_html: str, day_date: datetime.date, changed: bool) -> None:
         weekday_str = day_date.strftime('%A')
         if changed:
-            subj = f"Schedule changed – {day_date.isoformat()} ({weekday_str})"
+            subj = f"Schedule changed: YES – {day_date.isoformat()} ({weekday_str})"
         else:
-            subj = f"Schedule no changes – {day_date.isoformat()} ({weekday_str})"
+            subj = f"Schedule changed: NO – {day_date.isoformat()} ({weekday_str})"
 
         mailer = SmtpNotificationMailer(config['smtp:1'])
         mailer.send(subj, MIMEText(diff_html, _subtype='html', _charset='utf-8'))
